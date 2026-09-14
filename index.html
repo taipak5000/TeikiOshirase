@@ -151,6 +151,9 @@
   .stepper input::-webkit-outer-spin-button, .stepper input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
   .unit { color: var(--text-2); font-size: 0.85rem; margin-left: 6px; min-width: 1.5em; }
   .row .ctl { display: flex; align-items: center; }
+  .ctl-wrap { flex-direction: column; align-items: flex-end; gap: 6px; }
+  .ctl-wrap .stepper button { width: 34px; }
+  .ctl-wrap .stepper input { width: 46px; }
 
   .text-input {
     border: 0; background: var(--fill); border-radius: 10px; padding: 8px 12px; font: inherit; font-size: 1rem; color: var(--text); text-align: right; width: 160px; outline: none;
@@ -250,13 +253,23 @@
     </div>
     <div class="row">
       <div><span class="label">配布間隔</span><span class="hint">受け取りから再配布までの時間</span></div>
-      <div class="ctl">
-        <div class="stepper">
-          <button type="button" data-step="minutes" data-d="-1" aria-label="減らす">−</button>
-          <input type="number" id="minutes" min="1" max="1440" inputmode="numeric" value="30">
-          <button type="button" data-step="minutes" data-d="1" aria-label="増やす">＋</button>
+      <div class="ctl ctl-wrap">
+        <div class="ctl">
+          <div class="stepper">
+            <button type="button" data-step="minutes" data-d="-1" aria-label="減らす">−</button>
+            <input type="number" id="minutes" min="0" max="1440" inputmode="numeric" value="30">
+            <button type="button" data-step="minutes" data-d="1" aria-label="増やす">＋</button>
+          </div>
+          <span class="unit">分</span>
         </div>
-        <span class="unit">分</span>
+        <div class="ctl">
+          <div class="stepper">
+            <button type="button" data-step="seconds" data-d="-5" aria-label="減らす">−</button>
+            <input type="number" id="seconds" min="0" max="59" inputmode="numeric" value="0">
+            <button type="button" data-step="seconds" data-d="5" aria-label="増やす">＋</button>
+          </div>
+          <span class="unit">秒</span>
+        </div>
       </div>
     </div>
     <div class="row">
@@ -319,6 +332,7 @@
   let s = {
     itemName: '',
     minutes: 30,
+    seconds: 0,
     interval: 30,
     soundOn: true,
     notifyOn: false,
@@ -423,7 +437,8 @@
     return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
   }
   const label = () => s.itemName.trim() || 'アイテム';
-  const waitMs = () => Math.max(1, s.minutes) * 60000;
+  const waitMs = () => Math.max(1000, s.minutes * 60000 + s.seconds * 1000);
+  const fmtSet = () => { const m = s.minutes, sec = s.seconds; return (m > 0 ? `${m}分` : '') + (sec > 0 || m === 0 ? `${sec}秒` : ''); };
   const intervalMs = () => Math.max(0, s.interval) * 1000;
 
   // ---- phase control ----
@@ -442,7 +457,7 @@
     s.log = s.log.slice(0, 20);
     chime(); vibrate();
     notify(`${label()}が配布されました`, `受け取りに行きましょう。${s.interval > 0 ? `${s.interval}秒後に次のタイマーが始まります。` : ''}`);
-    showAlert(`${label()}が配布されました`, s.interval > 0 ? `${s.interval}秒後に自動で次の${s.minutes}分を数え始めます` : `次の${s.minutes}分を数え始めました`);
+    showAlert(`${label()}が配布されました`, s.interval > 0 ? `${s.interval}秒後に自動で次の${fmtSet()}を数え始めます` : `次の${fmtSet()}を数え始めました`);
     if (intervalMs() > 0) {
       s.phase = 'collect';
       s.phaseEnd = Date.now() + intervalMs();
@@ -522,6 +537,7 @@
   function renderSettings() {
     $('itemName').value = s.itemName;
     $('minutes').value = s.minutes;
+    $('seconds').value = s.seconds;
     $('interval').value = s.interval;
     $('soundOn').checked = s.soundOn;
     $('notifyOn').checked = s.notifyOn && hasNotif && Notification.permission === 'granted';
@@ -573,9 +589,11 @@
 
   function commitInputs() {
     s.itemName = $('itemName').value;
-    s.minutes = clamp(parseInt($('minutes').value, 10) || 1, 1, 1440);
+    s.minutes = clamp(parseInt($('minutes').value, 10) || 0, 0, 1440);
+    s.seconds = clamp(parseInt($('seconds').value, 10) || 0, 0, 59);
+    if (s.minutes === 0 && s.seconds === 0) s.seconds = 1;
     s.interval = clamp(parseInt($('interval').value, 10) || 0, 0, 3600);
-    $('minutes').value = s.minutes; $('interval').value = s.interval;
+    $('minutes').value = s.minutes; $('seconds').value = s.seconds; $('interval').value = s.interval;
     save();
   }
   const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -588,7 +606,7 @@
       commitInputs(); render();
     });
   });
-  ['minutes', 'interval', 'itemName'].forEach(id => {
+  ['minutes', 'seconds', 'interval', 'itemName'].forEach(id => {
     $(id).addEventListener('change', () => { commitInputs(); render(); });
   });
   $('soundOn').addEventListener('change', (e) => { s.soundOn = e.target.checked; if (s.soundOn) { ensureAudio(); } save(); });
